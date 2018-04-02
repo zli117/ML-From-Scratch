@@ -61,9 +61,9 @@ class DenseLayer(Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        self.weights.data.apply_(self.initializer)
+        self.initializer(self.weights.data)
         if self.bias is not None:
-            self.bias.data.apply_(self.initializer)
+            self.initializer(self.bias.data)
 
     def forward(self, ipt_mtx):
         return DenseFunction.apply(ipt_mtx, self.weights, self.bias)
