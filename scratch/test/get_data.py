@@ -19,3 +19,8 @@ cifar10_train = torchvision.datasets.CIFAR10(root=DATA_DIR, train=True,
                                              download=True, transform=transform)
 cifar10_test = torchvision.datasets.CIFAR10(root=DATA_DIR, train=False,
                                             download=True, transform=transform)
+
+mnist_train = torchvision.datasets.MNIST(root=DATA_DIR, train=True,
+                                         download=True, transform=transform)
+mnist_test = torchvision.datasets.MNIST(root=DATA_DIR, train=False,
+                                        download=True, transform=transform)
