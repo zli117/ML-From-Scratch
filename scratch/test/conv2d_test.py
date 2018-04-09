@@ -72,20 +72,23 @@ class TestConv2DLayer(unittest.TestCase):
         torch_result.backward(gradient)
         self.assertTrue(
             np.allclose(input_layer.grad.data.numpy(),
-                        input_torch.grad.data.numpy())
+                        input_torch.grad.data.numpy(),
+                        equal_nan=True)
         )
         layer_weight_grad = conv2d_layer.kernels.grad
         torch_weight_grad = torch_conv2d.weight.grad.view(layer_weight_shape)
         self.assertTrue(
             np.allclose(layer_weight_grad.data.numpy(),
-                        torch_weight_grad.data.numpy())
+                        torch_weight_grad.data.numpy(),
+                        equal_nan=True)
         )
         if has_bias:
             layer_bias_grad = conv2d_layer.bias.grad.view(out_ch)
             torch_bias_grad = torch_conv2d.bias.grad.view(out_ch)
             self.assertTrue(
                 np.allclose(layer_bias_grad.data.numpy(),
-                            torch_bias_grad.data.numpy())
+                            torch_bias_grad.data.numpy(),
+                            equal_nan=True)
             )
 
     def test1(self):
