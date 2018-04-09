@@ -1,2 +1,2 @@
 #!/usr/bin/bash
-PYTHONPATH=`pwd`
+export PYTHONPATH=`pwd`

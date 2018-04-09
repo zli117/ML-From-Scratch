@@ -13,8 +13,7 @@ class Conv2DLayer(Module):
     Convolution 2d layer
     """
     def __init__(self, input_channels, kernel_shape, num_kernels, initializer,
-                 stride=(1, 1), padding=(0, 0), bias=True,
-                 dtype=torch.FloatTensor):
+                 stride=(1, 1), padding=(0, 0), bias=True):
         """
         Create a 2D convolution layer
         The expected input size is (b, c, x, y)
@@ -34,12 +33,12 @@ class Conv2DLayer(Module):
                 num_kernels,
                 (kernel_shape[0]
                  * kernel_shape[1]
-                 * input_channels
-                 + (1 if bias else 0))
-            ).type(dtype)
+                 * input_channels)
+            )
         )
+        self.bias = Parameter(torch.Tensor(num_kernels, 1).zero_())
+        self.has_bias = bias
         self.input_channels = input_channels
-        self.bias = bias
         self.stride_r, self.stride_c = stride
         self.padding_r, self.padding_c = padding
         self.kernel_r, self.kernel_c = kernel_shape
@@ -53,6 +52,8 @@ class Conv2DLayer(Module):
 
     def reset_parameters(self):
         self.initializer(self.kernels.data)
+        if self.has_bias:
+            self.initializer(self.bias.data)
 
     def _unroll(self, inputs, out_r, out_c):
         if len(inputs.shape) != 4 or inputs.shape[1] != self.input_channels:
@@ -72,13 +73,12 @@ class Conv2DLayer(Module):
                             padded[b, ch, :, :]
                             .narrow(0, r * self.stride_r, self.kernel_r)
                             .narrow(1, c * self.stride_c, self.kernel_c)
+                            .contiguous()
                         ).view(kernel_unrolled_shape, 1)
                         channel.append(cur_block)
                 channels.append(torch.cat(channel, dim=1))
-            if self.bias:
-                channels.append(torch.ones(1, out_r * out_c))
             batches.append(torch.cat(channels, dim=0))
-        return torch.cat(batches, dim=1)
+        return batches
 
     def forward(self, inputs):
         batch, _, in_r, in_c = inputs.shape
@@ -89,6 +89,8 @@ class Conv2DLayer(Module):
         # The unrolling approach is not as efficient as direct convolution,
         # but since we are implementing it on top of PyTorch, this could be the
         # most efficient way possible.
-        unrolled = self._unroll(inputs, out_r, out_c)
-        result = torch.mm(self.kernels, unrolled)
-        return result.view(batch, self.num_kernels, out_r, out_c)
+        unrolled_batches = self._unroll(inputs, out_r, out_c)
+        results = [torch.mm(self.kernels, batch) + self.bias
+                   for batch in unrolled_batches]
+        result_batches = torch.cat(results, dim=0)
+        return result_batches.view(batch, self.num_kernels, out_r, out_c)
