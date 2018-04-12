@@ -30,17 +30,18 @@ class TestDenseLayer(unittest.TestCase):
             ),
         ]
 
-        self.inputs_func_cuda = [
-            Variable(
-                ipt.data.type(torch.DoubleTensor).cuda(), requires_grad=True
-            ) for ipt in self.inputs_func
-        ]
+        if torch.cuda.is_available():
+            self.inputs_func_cuda = [
+                Variable(
+                    ipt.data.type(torch.DoubleTensor).cuda(), requires_grad=True
+                ) for ipt in self.inputs_func
+            ]
 
-        self.inputs_layer_cuda = [
-            Variable(
-                ipt.data.type(torch.DoubleTensor).cuda(), requires_grad=True
-            ) for ipt in self.inputs_layer
-        ]
+            self.inputs_layer_cuda = [
+                Variable(
+                    ipt.data.type(torch.DoubleTensor).cuda(), requires_grad=True
+                ) for ipt in self.inputs_layer
+            ]
 
         self.func = DenseFunction.apply
 
@@ -50,6 +51,8 @@ class TestDenseLayer(unittest.TestCase):
         )
 
     def test_func_gpu(self):
+        if not torch.cuda.is_available():
+            self.skipTest("CUDA not available")
         self.assertTrue(
             gradcheck(self.func, self.inputs_func_cuda, raise_exception=False)
         )
@@ -62,6 +65,8 @@ class TestDenseLayer(unittest.TestCase):
         )
 
     def test_layer_gpu(self):
+        if not torch.cuda.is_available():
+            self.skipTest("CUDA not available")
         layer = DenseLayer(30, 40, lambda t: torch.nn.init.normal(t, -1, 1),
                            dtype=torch.cuda.DoubleTensor)
         self.assertTrue(
