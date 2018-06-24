@@ -60,21 +60,27 @@ class Conv2DLayer(Module):
             raise RuntimeError('Invalid input shape: %s' % inputs.shape)
         padded = pad(inputs, (self.padding_c, self.padding_c,
                               self.padding_r, self.padding_r))
-        batch_num, channel_num, row, col = padded.shape
+        batch_num, channel_num, _, _ = padded.shape
         kernel_unrolled_shape = self.kernel_r * self.kernel_c
         batches = []
-        for b in range(batch_num):
+        for batch in range(batch_num):
             channels = []
-            for ch in range(channel_num):
+            for channel_idx in range(channel_num):
                 channel = []
-                for r in range(out_r):
-                    for c in range(out_c):
+                for row in range(out_r):
+                    for column in range(out_c):
+
+                        # yapf: disable
+
                         cur_block = (
-                            padded[b, ch, :, :]
-                            .narrow(0, r * self.stride_r, self.kernel_r)
-                            .narrow(1, c * self.stride_c, self.kernel_c)
+                            padded[batch, channel_idx, :, :]
+                            .narrow(0, row * self.stride_r, self.kernel_r)
+                            .narrow(1, column * self.stride_c, self.kernel_c)
                             .contiguous()
                         ).view(kernel_unrolled_shape, 1)
+
+                        # yapf: enable
+
                         channel.append(cur_block)
                 channels.append(torch.cat(channel, dim=1))
             batches.append(torch.cat(channels, dim=0))
