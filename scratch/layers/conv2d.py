@@ -92,9 +92,11 @@ class Conv2DLayer(Module):
                                        self.stride_r, self.kernel_r)
         out_c = self._compute_out_size(in_c, self.padding_c,
                                        self.stride_c, self.kernel_c)
+
         # The unrolling approach is not as efficient as direct convolution,
         # but since we are implementing it on top of PyTorch, this could be the
         # most efficient way possible.
+
         unrolled_batches = self._unroll(inputs, out_r, out_c)
         results = [torch.mm(self.kernels, batch) + self.bias
                    for batch in unrolled_batches]
