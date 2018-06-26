@@ -60,13 +60,13 @@ class Memory(Module):
         self.precedence.zero_()
         self.read_weights.zero_()
 
-    def write_addressing_(self, key, weight):
+    def write_addressing_(self, key, strength):
         """Compute the content based addressing as described in the paper
 
         Args:
             key (torch.Tensor): The write key. Should be a tensor with shape
                 (Batch, W)
-            weight (torch.Tensor): The write weight. A tensor with shape
+            strength (torch.Tensor): The write weight. A tensor with shape
                 (Batch, 1)
 
         Returns:
@@ -78,18 +78,18 @@ class Memory(Module):
         similarities = [
             functional.softmax(
                 cos_similarity(key[i], self.memory[i]).unsqueeze(dim=0) *
-                weight[i],
+                strength[i],
                 dim=0) for i in range(self.batch_size)
         ]
         return torch.stack(similarities, dim=0)
 
-    def read_addressing_(self, key, weight):
+    def read_addressing_(self, key, strength):
         """Computes the read content addressing for the whole batch
 
         Args:
             key (torch.Tensor): The read keys for all batches for all read
                 heads. Shape should be (Batch, #RH, W)
-            weight (torch.Tensor): Shape should be (Batch, #RH, 1)
+            strength (torch.Tensor): Shape should be (Batch, #RH, 1)
 
         Returns:
             torch.Tensor: The probability for each row to be read by each read
@@ -100,7 +100,7 @@ class Memory(Module):
         addressing = []
         for i in range(self.batch_size):
             batch_key = key[i]
-            batch_weight = weight[i]
+            batch_weight = strength[i]
             similarities = [
                 functional.softmax(
                     cos_similarity(batch_key[j], self.memory[i]), dim=0)
@@ -113,6 +113,8 @@ class Memory(Module):
     def get_allocation_(self):
         """Computes the allocation weightings as described in the paper
 
+        Updates saved allocation vectors.
+
         Returns:
             torch.Tensor: The allocation weight for each memory entry (row in
                 the memory matrix)
@@ -124,8 +126,33 @@ class Memory(Module):
             multiply *= self.usage[:, :, i]
         return self.allocation
 
-    def get_read_weight_(self, i, interface):
-        pass
+    def get_read_weight_(self, interface):
+        """Computes the new read weight from the old read weight and the
+           temporal link
+
+        Updates saved read weights.
+
+        Args:
+            interface (Interface): The interface object created from the
+                interface vector for the whole batch.
+
+        Returns:
+            torch.Tensor: The read weight for each each head for each batch. The
+                shape will be: (Batch, #RH, N)
+        """
+        old_read_weights = self.read_weights
+        transpose_temporal_link = torch.transpose(self.temporal_link, 1, 2)
+        forward_weights = torch.bmm(old_read_weights, transpose_temporal_link)
+        backward_weights = torch.bmm(old_read_weights, self.temporal_link)
+        content_weights = self.read_addressing_(interface.read_keys,
+                                                interface.read_strength)
+        forward_modes = interface.read_modes[:, :, 0].unsqueeze(dim=2)
+        backward_modes = interface.read_modes[:, :, 1].unsqueeze(dim=2)
+        content_modes = interface.read_modes[:, :, 2].unsqueeze(dim=2)
+        self.read_weights = (
+            forward_weights * forward_modes + backward_weights * backward_modes
+            + content_weights * content_modes)
+        return self.read_weights
 
     def forward(self, interface):
         """Performs one read and write cycle
@@ -150,6 +177,9 @@ class Memory(Module):
 
         Args:
             interface (Interface): The interface emitted from the controller
+
+        Returns:
+            torch.Tensor: The read result. Shape: (Batch, #RH, W)
         """
         allocation_weight = self.get_allocation_()
         write_content_address = self.write_addressing_(interface.write_key,
@@ -195,3 +225,7 @@ class Memory(Module):
                       old_usage * write_weights) * retention_vector
 
         # Read
+
+        read_weights = self.get_read_weight_(interface)
+        read_result = torch.bmm(read_weights, self.memory)
+        return read_result
