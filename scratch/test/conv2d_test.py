@@ -29,29 +29,35 @@ class TestConv2DLayer(unittest.TestCase):
         ]
 
     def helper_func(self, config_idx):
-        (in_ch, out_ch, k_size, stride, padding, has_bias,
-         batch_size, height, width) = self.configs[config_idx]
+        (in_ch, out_ch, k_size, stride, padding, has_bias, batch_size, height,
+         width) = self.configs[config_idx]
 
         torch_conv2d = Conv2d(
-            in_ch, out_ch, k_size, stride=stride, padding=padding, bias=has_bias
-        )
+            in_ch,
+            out_ch,
+            k_size,
+            stride=stride,
+            padding=padding,
+            bias=has_bias)
         torch_conv2d.type(torch.DoubleTensor)
 
-        conv2d_layer = Conv2DLayer(in_ch, (k_size, k_size), out_ch,
-                                   lambda t: torch.nn.init.normal(t, -1, 1),
-                                   stride=(stride, stride),
-                                   padding=(padding, padding),
-                                   bias=has_bias)
+        conv2d_layer = Conv2DLayer(
+            in_ch, (k_size, k_size),
+            out_ch,
+            lambda t: torch.nn.init.normal(t, -1, 1),
+            stride=(stride, stride),
+            padding=(padding, padding),
+            bias=has_bias)
         conv2d_layer.type(torch.DoubleTensor)
 
         input_tensor = (torch.DoubleTensor(batch_size, in_ch, height, width)
-                             .uniform_(-1, 1))
+                        .uniform_(-1, 1))
         input_layer = Variable(input_tensor, requires_grad=True)
         input_torch = Variable(input_tensor.clone(), requires_grad=True)
 
         bias_tensor = torch.DoubleTensor(out_ch).uniform_(-1, 1)
-        weights = (torch.DoubleTensor(out_ch, in_ch, k_size, k_size)
-                        .uniform_(-1, 1))
+        weights = (torch.DoubleTensor(out_ch, in_ch, k_size, k_size).uniform_(
+            -1, 1))
         torch_conv2d.weight.data.copy_(weights)
         if has_bias:
             torch_conv2d.bias.data.copy_(bias_tensor)
@@ -71,25 +77,25 @@ class TestConv2DLayer(unittest.TestCase):
         layer_result.backward(gradient)
         torch_result.backward(gradient)
         self.assertTrue(
-            np.allclose(input_layer.grad.data.numpy(),
-                        input_torch.grad.data.numpy(),
-                        equal_nan=True)
-        )
+            np.allclose(
+                input_layer.grad.data.numpy(),
+                input_torch.grad.data.numpy(),
+                equal_nan=True))
         layer_weight_grad = conv2d_layer.kernels.grad
         torch_weight_grad = torch_conv2d.weight.grad.view(layer_weight_shape)
         self.assertTrue(
-            np.allclose(layer_weight_grad.data.numpy(),
-                        torch_weight_grad.data.numpy(),
-                        equal_nan=True)
-        )
+            np.allclose(
+                layer_weight_grad.data.numpy(),
+                torch_weight_grad.data.numpy(),
+                equal_nan=True))
         if has_bias:
             layer_bias_grad = conv2d_layer.bias.grad.view(out_ch)
             torch_bias_grad = torch_conv2d.bias.grad.view(out_ch)
             self.assertTrue(
-                np.allclose(layer_bias_grad.data.numpy(),
-                            torch_bias_grad.data.numpy(),
-                            equal_nan=True)
-            )
+                np.allclose(
+                    layer_bias_grad.data.numpy(),
+                    torch_bias_grad.data.numpy(),
+                    equal_nan=True))
 
     def test1(self):
         self.helper_func(0)
