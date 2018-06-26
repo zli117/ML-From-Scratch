@@ -25,7 +25,7 @@ class Interface:
 
     def get_read_keys_(self, interface):
         keys = interface[:, :self.num_read_heads * self.cell_width]
-        return keys.unsqueeze(dim=0)
+        return keys.view(-1, self.num_read_heads, self.cell_width)
 
     def get_read_strengths_(self, interface):
         start = self.num_read_heads * self.cell_width
@@ -38,7 +38,7 @@ class Interface:
 
     def get_write_strength_(self, interface):
         return interface[:, self.num_read_heads * (self.cell_width + 1) +
-                         self.cell_width]
+                         self.cell_width].unsqueeze(dim=1)
 
     def get_erase_vector_(self, interface):
         start = self.num_read_heads * (
@@ -61,13 +61,13 @@ class Interface:
     def get_allocation_gate(self, interface):
         start = self.num_read_heads * (
             self.cell_width + 2) + self.cell_width * 3 + 1
-        gate = interface[:, start]
+        gate = interface[:, start].unsqueeze(dim=1)
         return functional.sigmoid(gate).unsqueeze(dim=2)
 
     def get_write_gate(self, interface):
         start = self.num_read_heads * (
             self.cell_width + 2) + self.cell_width * 3 + 2
-        gate = interface[:, start]
+        gate = interface[:, start].unsqueeze(dim=1)
         return functional.sigmoid(gate).unsqueeze(dim=2)
 
     def get_read_modes_(self, interface):
@@ -79,5 +79,5 @@ class Interface:
         Returns:
             torch.Tensor: shape: (B, #RH, 3)
         """
-        modes = interface[:, -3 * self.num_read_heads]
+        modes = interface[:, -3 * self.num_read_heads:]
         return modes.view(-1, self.num_read_heads, 3)
