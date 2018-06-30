@@ -50,12 +50,12 @@ class Memory(Module):
     def reset(self):
         """Resets the memory module
 
-        Zeros out memory, usage vector, temporal links, allocation vector,
+        Zeros out memory, temporal links, usage vector, allocation vector,
         precedence vector and read weights.
         """
         self.memory.data.zero_()
-        self.usage.data.zero_()
         self.temporal_link.zero_()
+        self.usage.data.zero_()
         self.allocation_weight.zero_()
         self.precedence.zero_()
         self.read_weights.zero_()
@@ -156,15 +156,15 @@ class Memory(Module):
         """Performs one read and write cycle
 
         The following steps are deduced from the formulas in the paper:
-            1. Compute forward and backward weights
-            2. Compute the read weight
-            3. Perform read
-            4. Computes the allocation weights
-            5. Computes the weight weights using allocation weights and
+            1. Computes the allocation weights
+            2. Computes the weight weights using allocation weights and
                content weights.
-            6. Write to the memory matrix
-            7. Update the temporal link matrix
-            8. Update usage vector
+            3. Write to the memory matrix
+            4. Update the temporal link matrix
+            5. Update usage vector
+            6. Compute forward and backward weights
+            7. Compute the read weight
+            8. Perform read
 
         Note that the interface vectors here are all row vectors,
         unlike in the paper
@@ -176,11 +176,6 @@ class Memory(Module):
         Returns:
             torch.Tensor: The read result. Shape: (Batch, #RH, W)
         """
-
-        # Read
-
-        self.update_read_weight_(interface)
-        read_result = torch.bmm(self.read_weights, self.memory)
 
         # Compute allocation weights
 
@@ -227,4 +222,7 @@ class Memory(Module):
         self.usage = ((old_usage + write_weights - old_usage * write_weights) *
                       retention_vector)
 
-        return read_result
+        # Read
+
+        self.update_read_weight_(interface)
+        return torch.bmm(self.read_weights, self.memory)
