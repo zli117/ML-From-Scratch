@@ -38,7 +38,7 @@ class Memory(Module):
             requires_grad=False)
         self.usage = Parameter(
             torch.Tensor(batch_size, 1, num_cells), requires_grad=False)
-        self.allocation = Parameter(
+        self.allocation_weight = Parameter(
             torch.Tensor(batch_size, 1, num_cells), requires_grad=False)
         self.precedence = Parameter(
             torch.Tensor(batch_size, 1, num_cells), requires_grad=False)
@@ -56,7 +56,7 @@ class Memory(Module):
         self.memory.data.zero_()
         self.usage.data.zero_()
         self.temporal_link.zero_()
-        self.allocation.zero_()
+        self.allocation_weight.zero_()
         self.precedence.zero_()
         self.read_weights.zero_()
 
@@ -110,7 +110,7 @@ class Memory(Module):
             addressing.append(similarities)
         return torch.stack(addressing, dim=0)
 
-    def get_allocation_(self):
+    def update_allocation_weight_(self):
         """Computes the allocation weightings as described in the paper
 
         Updates saved allocation vectors.
@@ -122,11 +122,11 @@ class Memory(Module):
         _, idx = torch.sort(self.usage, dim=2)
         multiply = Variable(self.usage.new_ones(self.batch_size, 1))
         for i in range(idx.shape[2]):
-            self.allocation[:, :, i] = (1 - self.usage[:, :, i]) * multiply
+            self.allocation_weight[:, :, i] = (
+                (1 - self.usage[:, :, i]) * multiply)
             multiply *= self.usage[:, :, i]
-        return self.allocation
 
-    def get_read_weight_(self, interface):
+    def update_read_weight_(self, interface):
         """Computes the new read weight from the old read weight and the
            temporal link
 
@@ -151,7 +151,6 @@ class Memory(Module):
         self.read_weights = (
             forward_weights * forward_modes + backward_weights * backward_modes
             + content_weights * content_modes)
-        return self.read_weights
 
     def forward(self, interface):
         """Performs one read and write cycle
@@ -180,20 +179,20 @@ class Memory(Module):
 
         # Read
 
-        read_weights = self.get_read_weight_(interface)
-        read_result = torch.bmm(read_weights, self.memory)
+        self.update_read_weight_(interface)
+        read_result = torch.bmm(self.read_weights, self.memory)
 
         # Compute allocation weights
 
-        allocation_weight = self.get_allocation_()
-        write_content_address = self.write_addressing_(interface.write_key,
-                                                       interface.write_strength)
+        self.update_allocation_weight_()
 
         # Perform the write
 
-        write_weights = (
-            interface.allocation_gate *
-            (allocation_weight - write_content_address) + write_content_address)
+        write_content_address = self.write_addressing_(interface.write_key,
+                                                       interface.write_strength)
+        write_weights = (interface.allocation_gate *
+                         (self.allocation_weight - write_content_address) +
+                         write_content_address)
         write_weights *= interface.write_gate
 
         write_vector = interface.write_vector
@@ -225,7 +224,7 @@ class Memory(Module):
                 1 - free_gates[:, i, :] * old_read_weights[:, i, :]
             ).unsqueeze(dim=1)
         old_usage = self.usage
-        self.usage = (old_usage + write_weights -
-                      old_usage * write_weights) * retention_vector
+        self.usage = ((old_usage + write_weights - old_usage * write_weights) *
+                      retention_vector)
 
         return read_result
