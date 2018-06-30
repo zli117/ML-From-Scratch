@@ -140,10 +140,9 @@ class Memory(Module):
             torch.Tensor: The read weight for each each head for each batch. The
                 shape will be: (Batch, #RH, N)
         """
-        old_read_weights = self.read_weights
         transpose_temporal_link = torch.transpose(self.temporal_link, 1, 2)
-        forward_weights = torch.bmm(old_read_weights, transpose_temporal_link)
-        backward_weights = torch.bmm(old_read_weights, self.temporal_link)
+        forward_weights = torch.bmm(self.read_weights, transpose_temporal_link)
+        backward_weights = torch.bmm(self.read_weights, self.temporal_link)
         content_weights = self.read_addressing_(interface.read_keys,
                                                 interface.read_strength)
         forward_modes = interface.read_modes[:, :, 0].unsqueeze(dim=2)
@@ -158,39 +157,44 @@ class Memory(Module):
         """Performs one read and write cycle
 
         The following steps are deduced from the formulas in the paper:
-            1. Computes the allocation weights
-            2. Computes the weight weights using allocation weights and
+            1. Compute forward and backward weights
+            2. Compute the read weight
+            3. Perform read
+            4. Computes the allocation weights
+            5. Computes the weight weights using allocation weights and
                content weights.
-            3. Write to the memory matrix
-            4. Update the temporal link matrix
+            6. Write to the memory matrix
+            7. Update the temporal link matrix
             8. Update usage vector
-            5. Compute forward and backward weights
-            6. Compute the read weight
-            7. Perform read
 
-        Note that we first perform the write then perform the read. This is
-        because in the paper read weight depends on the current temporal linkage
-        matrix which can only be updated after write.
-
-        Another notice is that the interface vectors here are all row vectors,
+        Note that the interface vectors here are all row vectors,
         unlike in the paper
 
         Args:
-            interface (Interface): The interface emitted from the controller
+            interface (Interface): The interface emitted from the controller.
+                Shape: (Batch, W * R + 3 * W + 5 * R + 3)
 
         Returns:
             torch.Tensor: The read result. Shape: (Batch, #RH, W)
         """
+
+        # Read
+
+        read_weights = self.get_read_weight_(interface)
+        read_result = torch.bmm(read_weights, self.memory)
+
+        # Compute allocation weights
+
         allocation_weight = self.get_allocation_()
         write_content_address = self.write_addressing_(interface.write_key,
                                                        interface.write_strength)
+
+        # Perform the write
 
         write_weights = (
             interface.allocation_gate *
             (allocation_weight - write_content_address) + write_content_address)
         write_weights *= interface.write_gate
-
-        # Perform the write
 
         write_vector = interface.write_vector
         erase_vector = interface.erase_vector
@@ -224,8 +228,4 @@ class Memory(Module):
         self.usage = (old_usage + write_weights -
                       old_usage * write_weights) * retention_vector
 
-        # Read
-
-        read_weights = self.get_read_weight_(interface)
-        read_result = torch.bmm(read_weights, self.memory)
         return read_result
