@@ -28,7 +28,7 @@ class Memory(Module):
     Does not have any internal state.
     """
 
-    def __init__(self, num_read_heads):
+    def __init__(self):
         """Create a memory module.
 
         The memory module will be responsible for perform read write to the
@@ -38,8 +38,8 @@ class Memory(Module):
             memory_size (Tuple[int, int]): The size of the memory
             num_read_heads (int): The number of read heads
         """
+
         super().__init__()
-        self.num_read_heads = num_read_heads
         self.cos_similarity = nn.CosineSimilarity()
 
     def _update_write_weight(self, interface, state):
@@ -57,11 +57,11 @@ class Memory(Module):
 
         write_content = self._get_content_addressing(
             interface.write_key, interface.write_strength, state.memory)
-        write_weights = (interface.allocation_gate *
-                         (allocation_weight - write_content) + write_content)
-        write_weights *= interface.write_gate
-        state.write_weights = write_weights
-        return state
+        write_weight = (interface.allocation_gate *
+                        (allocation_weight - write_content) + write_content)
+        write_weight *= interface.write_gate
+        write_weight = write_weight
+        return state._replace(write_weight=write_weight)
 
     def _get_content_addressing(self, keys, strength, memory):
         """Compute the content addressing weight for each cell
@@ -88,7 +88,7 @@ class Memory(Module):
             batch_strength = strength[i]
             similarities = [
                 self.cos_similarity(batch_key[j], memory[i])
-                for j in range(self.num_read_heads)
+                for j in range(num_channels)
             ]
             similarities = torch.stack(
                 similarities, dim=0).view(num_channels, num_cells)
