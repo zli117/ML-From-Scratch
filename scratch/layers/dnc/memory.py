@@ -1,228 +1,206 @@
 """
 The memory module of DNC
 """
+import collections
+
 import torch
-import torch.nn as nn
-import torch.nn.functional as functional
-from torch.nn import Module, Parameter
-from torch.autograd import Variable
+
+# Size of each field:
+# memory: (B, N, W)
+# temporal_link: (B, N, N)
+# usage: (B, 1, N)
+# precedence: (B, 1, N)
+# read_weights: (B, R, N)
+# write_weight: (B, 1, N)
+DNCState = collections.namedtuple(
+    "DNCState", ("memory", "temporal_link", "usage", "precedence",
+                 "read_weights", "write_weight"))
 
 
 class Memory(Module):
-    """The memory module for DNC
+    """The memory function.
 
-    The memory module is only for one data point in a batch.
+    All the tensor should be batch major
+
+    Does not have any internal state.
     """
 
-    def __init__(self, memory_size, num_read_heads, batch_size):
+    def __init__(self, memory_size, num_read_heads):
         """Create a memory module.
 
-        The memory module will be responsible for read write to the memory
-        (The addressing, allocation, temporal link).
+        The memory module will be responsible for perform read write to the
+        memory (The addressing, allocation, temporal link).
 
         Args:
             memory_size (Tuple[int, int]): The size of the memory
             num_read_heads (int): The number of read heads
-            batch_size (int): The batch size
         """
         super().__init__()
-        num_cells, cell_size = memory_size
-        self.memory_size = memory_size
+        self.num_cells = memory_size[0]
+        self.cell_size = memory_size[1]
         self.num_read_heads = num_read_heads
-        self.batch_size = batch_size
-        self.memory = Parameter(
-            torch.Tensor((batch_size, num_cells, cell_size)),
-            requires_grad=False)
-        self.temporal_link = Parameter(
-            torch.Tensor((batch_size, num_cells, num_cells)),
-            requires_grad=False)
-        self.usage = Parameter(
-            torch.Tensor(batch_size, 1, num_cells), requires_grad=False)
-        self.allocation_weight = Parameter(
-            torch.Tensor(batch_size, 1, num_cells), requires_grad=False)
-        self.precedence = Parameter(
-            torch.Tensor(batch_size, 1, num_cells), requires_grad=False)
-        self.read_weights = Parameter(
-            torch.Tensor(batch_size, num_read_heads, num_cells),
-            requires_grad=False)
-        self.reset()
+        self.cos_similarity = nn.CosineSimilarity()
 
-    def reset(self):
-        """Resets the memory module
-
-        Zeros out memory, temporal links, usage vector, allocation vector,
-        precedence vector and read weights.
-        """
-        self.memory.data.zero_()
-        self.temporal_link.zero_()
-        self.usage.data.zero_()
-        self.allocation_weight.zero_()
-        self.precedence.zero_()
-        self.read_weights.zero_()
-
-    def write_addressing_(self, key, strength):
-        """Compute the content based addressing as described in the paper
+    def _update_write_weight(self, interface, state):
+        """Compute the write weight
 
         Args:
-            key (torch.Tensor): The write key. Should be a tensor with shape
-                (Batch, W)
-            strength (torch.Tensor): The write weight. A tensor with shape
-                (Batch, 1)
+            interface (Interface): The controller interface
+            state (DNCState): Current state
 
         Returns:
-            torch.Tensor: The probability for each row to be written. The shape
-                is (Batch, 1, W)
+            DNCState: With write weight updated
         """
-        cos_similarity = nn.CosineSimilarity()
-        key = key.unsqueeze(dim=1)
-        similarities = [
-            functional.softmax(
-                cos_similarity(key[i], self.memory[i]).unsqueeze(dim=0) *
-                strength[i],
-                dim=0) for i in range(self.batch_size)
-        ]
-        return torch.stack(similarities, dim=0)
 
-    def read_addressing_(self, key, strength):
-        """Computes the read content addressing for the whole batch
+        allocation_weight = self._get_allocation_weight(state.usage)
+
+        write_content = self._get_content_addressing(interface.write_key,
+                                                     interface.write_strength)
+        write_weights = (interface.allocation_gate *
+                         (allocation_weight - write_content) + write_content)
+        write_weights *= interface.write_gate
+        state.write_weights = write_weights
+        return state
+
+    def _get_content_addressing(self, keys, strength):
+        """Compute the content addressing weight for each cell
 
         Args:
-            key (torch.Tensor): The read keys for all batches for all read
-                heads. Shape should be (Batch, #RH, W)
-            strength (torch.Tensor): Shape should be (Batch, #RH, 1)
+            keys (torch.Tensor): The keys. Should have shape (B, C, W)
+            strength (torch.Tensor): The strength. Should have shape (B, C, 1)
 
         Returns:
             torch.Tensor: The probability for each row to be read by each read
-                head. The shape is (Batch, #RH, W)
+                head. The shape is (B, C, N)
         """
-        cos_similarity = nn.CosineSimilarity()
-        key = key.unsqueeze(dim=2)
+
+        keys = keys.unsqueeze(dim=2)
         addressing = []
+
+        # Loop needed here since PyTorch doesn't have batch cos_similarity
+
         for i in range(self.batch_size):
-            batch_key = key[i]
+            batch_key = keys[i]
             batch_weight = strength[i]
             similarities = [
                 functional.softmax(
-                    cos_similarity(batch_key[j], self.memory[i]), dim=0)
+                    self.cos_similarity(batch_key[j], self.memory[i]), dim=0)
                 for j in range(self.num_read_heads)
             ]
             similarities = torch.stack(similarities, dim=0) * batch_weight
             addressing.append(similarities)
         return torch.stack(addressing, dim=0)
 
-    def update_allocation_weight_(self):
-        """Computes the allocation weightings as described in the paper
-
-        Updates saved allocation vectors.
-
-        Returns:
-            torch.Tensor: The allocation weight for each memory entry (row in
-                the memory matrix)
-        """
-        _, idx = torch.sort(self.usage, dim=2)
-        multiply = Variable(self.usage.new_ones(self.batch_size, 1))
-        for i in range(idx.shape[2]):
-            self.allocation_weight[:, :, i] = (
-                (1 - self.usage[:, :, i]) * multiply)
-            multiply *= self.usage[:, :, i]
-
-    def update_read_weight_(self, interface):
-        """Computes the new read weight from the old read weight and the
-           temporal link
-
-        Updates saved read weights.
+    def _update_read_weight(self, interface, state):
+        """Compute the read weight
 
         Args:
-            interface (Interface): The interface object created from the
-                interface vector for the whole batch.
+            interface (Interface): The interface emitted from the controller
+            state (DNCState): The state
 
         Returns:
-            torch.Tensor: The read weight for each each head for each batch. The
-                shape will be: (Batch, #RH, N)
+            DNCState: State with read weights updated
         """
-        transpose_temporal_link = torch.transpose(self.temporal_link, 1, 2)
-        forward_weights = torch.bmm(self.read_weights, transpose_temporal_link)
-        backward_weights = torch.bmm(self.read_weights, self.temporal_link)
+
+        transpose_temporal_link = torch.transpose(state.temporal_link, 1, 2)
+        forward_weights = torch.bmm(state.read_weights, transpose_temporal_link)
+        backward_weights = torch.bmm(state.read_weights, state.temporal_link)
         content_weights = self.read_addressing_(interface.read_keys,
                                                 interface.read_strength)
         forward_modes = interface.read_modes[:, :, 0].unsqueeze(dim=2)
         backward_modes = interface.read_modes[:, :, 1].unsqueeze(dim=2)
         content_modes = interface.read_modes[:, :, 2].unsqueeze(dim=2)
-        self.read_weights = (
+        state.read_weights = (
             forward_weights * forward_modes + backward_weights * backward_modes
             + content_weights * content_modes)
+        return state
 
-    def forward(self, interface):
-        """Performs one read and write cycle
-
-        The following steps are deduced from the formulas in the paper:
-            1. Computes the allocation weights
-            2. Computes the weight weights using allocation weights and
-               content weights.
-            3. Write to the memory matrix
-            4. Update the temporal link matrix
-            5. Update usage vector
-            6. Compute forward and backward weights
-            7. Compute the read weight
-            8. Perform read
-
-        Note that the interface vectors here are all row vectors,
-        unlike in the paper
+    def _get_allocation_weight(self, usage):
+        """Compute the allocation weight from current usage
 
         Args:
-            interface (Interface): The interface emitted from the controller.
-                Shape: (Batch, W * R + 3 * W + 5 * R + 3)
+            usage (torch.Tensor): current usage (B, 1, N)
 
         Returns:
-            torch.Tensor: The read result. Shape: (Batch, #RH, W)
+            torch.Tensor: The allocation weight for each memory entry (row in
+                the memory matrix). Shape: (B, 1, N)
         """
 
-        # Compute allocation weights
+        sorted_usage, idx = torch.sort(usage, dim=2)
+        _, rev_idx = torch.sort(idx, dim=2)
+        acc_prod_usage = torch.cumprod(sorted_usage, dim=2) / sorted_usage
+        sorted_allocation = (1 - sorted_usage) * acc_prod_usage
+        return torch.gather(sorted_allocation, 2, rev_idx)
 
-        self.update_allocation_weight_()
+    def _update_temporal_link_and_precedence(self, state,
+                                             transpose_write_weight):
+        """Compute the new temporal link and precedence
 
-        # Perform the write
+        Args:
+            state (DNCState): The current state
+            write_weight ([type]): current write weight. Shape: (B, 1, N)
+            transpose_write_weight ([type]): transposed write weight. Shape:
+                                             (B, N, 1)
 
-        write_content_address = self.write_addressing_(interface.write_key,
-                                                       interface.write_strength)
-        write_weights = (interface.allocation_gate *
-                         (self.allocation_weight - write_content_address) +
-                         write_content_address)
-        write_weights *= interface.write_gate
+        Returns:
+            DNCState: State with temporal link and precedence updated
+        """
 
+        grid_sum = (transpose_write_weight.repeat(1, 1, self.num_cells) +
+                    state.write_weight.repeat(1, self.num_cells, 1))
+        grid_subtract = 1 - grid_sum
+        state.temporal_link = (grid_subtract * state.temporal_link + torch.bmm(
+            transpose_write_weight, state.precedence))
+        state.precedence = (
+            (1 - torch.sum(state.write_weight)) * state.precedence +
+            state.write_weight)
+        return state
+
+    def _update_usage(self, interface, state):
+        """Update the usage vector in state
+
+        Args:
+            interface (Interface): The interface of from controller
+            state (DNCState): The state
+
+        Returns:
+            DNCState: State with usage updated
+        """
+
+        prod = torch.prod(state.read_weights, dim=1)
+        retention_vector = 1 - interface.free_gates * prod
+        usage = state.usage
+        state.usage = ((usage + state.write_weight - usage * state.write_weight)
+                       * retention_vector)
+        return state
+
+    def forward(self, interface, state):
+        """Perform one read write on the memory
+
+        Computes the weights from the interface emitted from the controller.
+
+        Args:
+            interface (Interface): The interface from controller
+            state (DNCState): The current state
+
+        Returns:
+            Tuple(torch.Tensor, torch.Tensor): The read result. Shape:
+                                               (Batch, #RH, W), and the state
+        """
+        state = self._update_write_weight(interface, state)
         write_vector = interface.write_vector
         erase_vector = interface.erase_vector
-        transposed_write_weights = torch.transpose(write_weights, 1, 2)
+        transpose_write_weight = torch.transpose(state.write_weight, 1, 2)
 
-        self.memory *= 1 - torch.bmm(transposed_write_weights, erase_vector)
-        self.memory += torch.bmm(transposed_write_weights, write_vector)
+        state.memory *= 1 - torch.bmm(transpose_write_weight, erase_vector)
+        state.memory += torch.bmm(transpose_write_weight, write_vector)
 
-        # Update the temporal linkage
+        state = self._update_temporal_link_and_precedence(
+            state, transpose_write_weight)
 
-        num_cells = self.memory_size[0]
-        grid_sum = (transposed_write_weights.repeat(1, 1, num_cells) +
-                    write_weights.repeat(1, num_cells, 1))
-        grid_subtract = 1 - grid_sum
-        self.temporal_link = (grid_subtract * self.temporal_link + torch.bmm(
-            transposed_write_weights, self.precedence))
-        self.precedence = (
-            (1 - torch.sum(write_weights)) * self.precedence + write_weights)
+        state = self._update_read_weight(interface, state)
+        read_val = torch.bmm(state.read_weights, state.memory)
 
-        # Update usage vector
+        state = self._update_usage(interface, state)
 
-        retention_vector = Variable(
-            self.usage.new_ones(self.batch_size, 1, num_cells))
-        free_gates = interface.free_gates
-        old_read_weights = self.read_weights
-        for i in range(self.num_read_heads):
-            retention_vector *= (
-                1 - free_gates[:, i, :] * old_read_weights[:, i, :]
-            ).unsqueeze(dim=1)
-        old_usage = self.usage
-        self.usage = ((old_usage + write_weights - old_usage * write_weights) *
-                      retention_vector)
-
-        # Read
-
-        self.update_read_weight_(interface)
-        return torch.bmm(self.read_weights, self.memory)
+        return read_val, state

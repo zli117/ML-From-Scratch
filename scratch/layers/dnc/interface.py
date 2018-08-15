@@ -16,8 +16,8 @@ class Interface:
         self.read_keys = self.get_read_keys_(interface)  # (B, #RH, W)
         self.read_strength = self.get_read_strengths_(interface)  # (B, #RH, 1)
         self.read_modes = self.get_read_modes_(interface)  # (B, #RH, 3)
-        self.write_key = self.get_write_key_(interface)  # (B, W)
-        self.write_strength = self.get_write_strength_(interface)  # (B, 1)
+        self.write_key = self.get_write_key_(interface)  # (B, 1, W)
+        self.write_strength = self.get_write_strength_(interface)  # (B, 1, 1)
         self.erase_vector = self.get_erase_vector_(interface)  # (B, 1, W)
         self.write_vector = self.get_write_vector_(interface)  # (B, 1, W)
         self.free_gates = self.get_r_free_gates(interface)  # (B, #RH, 1)
@@ -35,11 +35,13 @@ class Interface:
 
     def get_write_key_(self, interface):
         start = self.num_read_heads * (self.cell_width + 1)
-        return interface[:, start:(start + self.cell_width)]
+        key = interface[:, start:(start + self.cell_width)]
+        return key.view(-1, 1, self.cell_width)
 
     def get_write_strength_(self, interface):
-        return interface[:, self.num_read_heads * (self.cell_width + 1) +
-                         self.cell_width].unsqueeze(dim=1)
+        strength = interface[:, self.num_read_heads * (self.cell_width + 1) +
+                             self.cell_width].unsqueeze(dim=1)
+        return strength.view(-1, 1, 1)
 
     def get_erase_vector_(self, interface):
         start = (
