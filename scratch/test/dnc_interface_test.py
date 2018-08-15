@@ -34,14 +34,14 @@ class TestDNCInterface(unittest.TestCase):
                sigmoid_activate=False,
                read_modes=False):
         first_batch = batch[0].view(1, -1)
-        target = torch.arange(start, start + span)
+        target = torch.arange(start, start + span, dtype=torch.float)
         if sigmoid_activate:
             target = functional.sigmoid(target)
         if read_modes:
             target = target.view(-1, 3)
             target = functional.softmax(target, dim=-1)
             target = target.view(1, -1)
-        self.assertEqual(torch.sum(first_batch != target), 0)
+        self.assertTrue((first_batch == target).all())
 
     def test_read_keys(self):
         read_keys = self.interface.read_keys
@@ -62,14 +62,14 @@ class TestDNCInterface(unittest.TestCase):
 
     def test_write_key(self):
         write_key = self.interface.write_key
-        self.assertEqual(write_key.shape, (self.batch_size, self.cell_width))
+        self.assertEqual(write_key.shape, (self.batch_size, 1, self.cell_width))
         start = self.num_read_heads * (self.cell_width + 1)
         span = self.cell_width
         self.helper(start, span, write_key)
 
     def test_write_strength(self):
         write_strength = self.interface.write_strength
-        self.assertEqual(write_strength.shape, (self.batch_size, 1))
+        self.assertEqual(write_strength.shape, (self.batch_size, 1, 1))
         start = self.num_read_heads * (self.cell_width + 1) + self.cell_width
         span = 1
         self.helper(start, span, write_strength)
