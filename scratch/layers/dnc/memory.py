@@ -4,6 +4,8 @@ The memory module of DNC
 import collections
 
 import torch
+from torch import nn
+from torch.nn import Module, functional
 
 # Size of each field:
 # memory: (B, N, W)
