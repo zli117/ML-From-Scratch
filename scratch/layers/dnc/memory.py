@@ -6,6 +6,7 @@ import collections
 import torch
 from torch import nn
 from torch.nn import Module, functional
+from torch.autograd import Variable
 
 # Size of each field:
 # memory: (B, N, W)
@@ -27,7 +28,7 @@ class Memory(Module):
     Does not have any internal state.
     """
 
-    def __init__(self, memory_size, num_read_heads):
+    def __init__(self, num_read_heads):
         """Create a memory module.
 
         The memory module will be responsible for perform read write to the
@@ -38,8 +39,6 @@ class Memory(Module):
             num_read_heads (int): The number of read heads
         """
         super().__init__()
-        self.num_cells = memory_size[0]
-        self.cell_size = memory_size[1]
         self.num_read_heads = num_read_heads
         self.cos_similarity = nn.CosineSimilarity()
 
@@ -56,15 +55,15 @@ class Memory(Module):
 
         allocation_weight = self._get_allocation_weight(state.usage)
 
-        write_content = self._get_content_addressing(interface.write_key,
-                                                     interface.write_strength)
+        write_content = self._get_content_addressing(
+            interface.write_key, interface.write_strength, state.memory)
         write_weights = (interface.allocation_gate *
                          (allocation_weight - write_content) + write_content)
         write_weights *= interface.write_gate
         state.write_weights = write_weights
         return state
 
-    def _get_content_addressing(self, keys, strength):
+    def _get_content_addressing(self, keys, strength, memory):
         """Compute the content addressing weight for each cell
 
         Args:
@@ -76,21 +75,25 @@ class Memory(Module):
                 head. The shape is (B, C, N)
         """
 
+        batch_size = memory.shape[0]
+        num_cells = memory.shape[1]
+        num_channels = keys.shape[1]
         keys = keys.unsqueeze(dim=2)
         addressing = []
 
         # Loop needed here since PyTorch doesn't have batch cos_similarity
 
-        for i in range(self.batch_size):
+        for i in range(batch_size):
             batch_key = keys[i]
-            batch_weight = strength[i]
+            batch_strength = strength[i]
             similarities = [
-                functional.softmax(
-                    self.cos_similarity(batch_key[j], self.memory[i]), dim=0)
+                self.cos_similarity(batch_key[j], memory[i])
                 for j in range(self.num_read_heads)
             ]
-            similarities = torch.stack(similarities, dim=0) * batch_weight
-            addressing.append(similarities)
+            similarities = torch.stack(
+                similarities, dim=0).view(num_channels, num_cells)
+            softmax = functional.softmax(similarities * batch_strength, dim=1)
+            addressing.append(softmax)
         return torch.stack(addressing, dim=0)
 
     def _update_read_weight(self, interface, state):
@@ -107,8 +110,8 @@ class Memory(Module):
         transpose_temporal_link = torch.transpose(state.temporal_link, 1, 2)
         forward_weights = torch.bmm(state.read_weights, transpose_temporal_link)
         backward_weights = torch.bmm(state.read_weights, state.temporal_link)
-        content_weights = self.read_addressing_(interface.read_keys,
-                                                interface.read_strength)
+        content_weights = self._get_content_addressing(
+            interface.read_keys, interface.read_strength, state.memory)
         forward_modes = interface.read_modes[:, :, 0].unsqueeze(dim=2)
         backward_modes = interface.read_modes[:, :, 1].unsqueeze(dim=2)
         content_modes = interface.read_modes[:, :, 2].unsqueeze(dim=2)
@@ -125,12 +128,15 @@ class Memory(Module):
 
         Returns:
             torch.Tensor: The allocation weight for each memory entry (row in
-                the memory matrix). Shape: (B, 1, N)
+                          the memory matrix). Shape: (B, 1, N)
         """
 
+        batch_size = usage.shape[0]
         sorted_usage, idx = torch.sort(usage, dim=2)
         _, rev_idx = torch.sort(idx, dim=2)
-        acc_prod_usage = torch.cumprod(sorted_usage, dim=2) / sorted_usage
+        ones = Variable(sorted_usage.data.new(batch_size, 1, 1).fill_(1))
+        acc_prod_usage = torch.cumprod(
+            torch.cat((ones, sorted_usage), dim=2), dim=2)[:, :, :-1]
         sorted_allocation = (1 - sorted_usage) * acc_prod_usage
         return torch.gather(sorted_allocation, 2, rev_idx)
 
@@ -148,8 +154,9 @@ class Memory(Module):
             DNCState: State with temporal link and precedence updated
         """
 
-        grid_sum = (transpose_write_weight.repeat(1, 1, self.num_cells) +
-                    state.write_weight.repeat(1, self.num_cells, 1))
+        num_cells = state.memory.shape[1]
+        grid_sum = (transpose_write_weight.repeat(1, 1, num_cells) +
+                    state.write_weight.repeat(1, num_cells, 1))
         grid_subtract = 1 - grid_sum
         state.temporal_link = (grid_subtract * state.temporal_link + torch.bmm(
             transpose_write_weight, state.precedence))

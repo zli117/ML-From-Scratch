@@ -1,7 +1,7 @@
 """
 The interface data structure
 """
-import torch.nn.functional as functional
+from torch.nn import functional
 
 
 class Interface:
