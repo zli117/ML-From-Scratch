@@ -4,8 +4,9 @@ import unittest
 
 import numpy as np
 import torch
+from torch.autograd import Variable
 
-from scratch.layers.dnc.interface import Interface
+from scratch.layers.dnc.interface import Interface, InterfaceBuilder
 from scratch.layers.dnc.memory import DNCState, Memory
 
 
@@ -175,6 +176,34 @@ class TestDNCMemory(unittest.TestCase):
         self.assertTrue(
             np.allclose(np.array([0.277685, 0.33696, 0.248455]), new_usage))
 
+    def test_forward(self):
+        memory = Variable(torch.DoubleTensor(2, 3, 4).fill_(0))
+        usage = Variable(torch.DoubleTensor(2, 1, 3).fill_(0))
+        read_weights = Variable(torch.DoubleTensor(2, 2, 3).fill_(0))
+        write_weight = Variable(torch.DoubleTensor(2, 1, 3).fill_(0))
+        temporal_link = Variable(torch.DoubleTensor(2, 3, 3).fill_(0))
+        precedence = Variable(torch.DoubleTensor(2, 1, 3).fill_(0))
+        state = DNCState(
+            usage=usage,
+            read_weights=read_weights,
+            write_weight=write_weight,
+            memory=memory,
+            temporal_link=temporal_link,
+            precedence=precedence)
+        data_len = 2 * ((4 * 2) + 3 * 4 + 5 * 2 + 3)
+        interface_vector = Variable(torch.DoubleTensor(data_len).fill_(0)).view(
+            2, -1)
+        interface = InterfaceBuilder(2, 4).get_interface(interface_vector)
+        interface = interface._replace(
+            write_vector=interface.write_vector + 1,
+            allocation_gate=interface.allocation_gate + 0.5)
+        read_val, new_state = self.memory(interface, state)
+        read_val, new_state = self.memory(interface, new_state)
+        read_val, new_state = self.memory(interface, new_state)
+        self.assertEqual(new_state.temporal_link[0, 1, 0], 0.25)
+        self.assertEqual(new_state.temporal_link[1, 1, 0], 0.25)
+        memory = new_state.memory.numpy()
+        self.assertTrue(np.allclose(memory, 0.5))
 
 if __name__ == '__main__':
     unittest.main()

@@ -179,7 +179,8 @@ class Memory(Module):
 
         prev_read_weights = state.read_weights
         retention_vector = torch.prod(
-            1 - interface.free_gates * prev_read_weights, dim=1)
+            1 - interface.free_gates * prev_read_weights,
+            dim=1).unsqueeze(dim=1)
         usage = state.usage
         usage = ((usage + state.write_weight - usage * state.write_weight) *
                  retention_vector)
@@ -203,8 +204,10 @@ class Memory(Module):
         erase_vector = interface.erase_vector
         transpose_write_weight = torch.transpose(state.write_weight, 1, 2)
 
-        state.memory *= 1 - torch.bmm(transpose_write_weight, erase_vector)
-        state.memory += torch.bmm(transpose_write_weight, write_vector)
+        memory = state.memory
+        memory *= 1 - torch.bmm(transpose_write_weight, erase_vector)
+        memory += torch.bmm(transpose_write_weight, write_vector)
+        state = state._replace(memory=memory)
 
         state = self._update_temporal_link_and_precedence(
             state, transpose_write_weight)

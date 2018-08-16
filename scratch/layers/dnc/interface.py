@@ -3,6 +3,7 @@ The interface data structure
 """
 import collections
 
+import torch
 from torch.nn import functional
 
 # Size of each element:
@@ -91,19 +92,19 @@ class InterfaceBuilder:
         start = (self.num_read_heads * (self.cell_width + 1) +
                  self.cell_width * 3 + 1)
         gates = interface[:, start:(start + self.num_read_heads)]
-        return functional.sigmoid(gates).unsqueeze(dim=2)
+        return torch.sigmoid(gates).unsqueeze(dim=2)
 
     def _get_allocation_gate(self, interface):
         start = (self.num_read_heads * (self.cell_width + 2) +
                  self.cell_width * 3 + 1)
         gate = interface[:, start].unsqueeze(dim=1)
-        return functional.sigmoid(gate).unsqueeze(dim=2)
+        return torch.sigmoid(gate).unsqueeze(dim=2)
 
     def _get_write_gate(self, interface):
         start = (self.num_read_heads * (self.cell_width + 2) +
                  self.cell_width * 3 + 2)
         gate = interface[:, start].unsqueeze(dim=1)
-        return functional.sigmoid(gate).unsqueeze(dim=2)
+        return torch.sigmoid(gate).unsqueeze(dim=2)
 
     def _get_read_modes(self, interface):
         modes = interface[:, -3 * self.num_read_heads:]

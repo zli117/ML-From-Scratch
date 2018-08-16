@@ -6,7 +6,7 @@ import unittest
 import torch
 from torch.nn import functional
 
-from scratch.layers.dnc.interface import Interface, InterfaceBuilder
+from scratch.layers.dnc.interface import InterfaceBuilder
 
 
 class TestDNCInterface(unittest.TestCase):
