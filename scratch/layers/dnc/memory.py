@@ -60,7 +60,6 @@ class Memory(Module):
         write_weight = (interface.allocation_gate *
                         (allocation_weight - write_content) + write_content)
         write_weight *= interface.write_gate
-        write_weight = write_weight
         return state._replace(write_weight=write_weight)
 
     def _get_content_addressing(self, keys, strength, memory):
@@ -115,10 +114,10 @@ class Memory(Module):
         forward_modes = interface.read_modes[:, :, 0].unsqueeze(dim=2)
         backward_modes = interface.read_modes[:, :, 1].unsqueeze(dim=2)
         content_modes = interface.read_modes[:, :, 2].unsqueeze(dim=2)
-        state.read_weights = (
+        read_weights = (
             forward_weights * forward_modes + backward_weights * backward_modes
             + content_weights * content_modes)
-        return state
+        return state._replace(read_weights=read_weights)
 
     def _get_allocation_weight(self, usage):
         """Compute the allocation weight from current usage
@@ -146,7 +145,6 @@ class Memory(Module):
 
         Args:
             state (DNCState): The current state
-            write_weight ([type]): current write weight. Shape: (B, 1, N)
             transpose_write_weight ([type]): transposed write weight. Shape:
                                              (B, N, 1)
 
@@ -154,16 +152,19 @@ class Memory(Module):
             DNCState: State with temporal link and precedence updated
         """
 
-        num_cells = state.memory.shape[1]
+        num_cells = state.write_weight.shape[2]
         grid_sum = (transpose_write_weight.repeat(1, 1, num_cells) +
                     state.write_weight.repeat(1, num_cells, 1))
         grid_subtract = 1 - grid_sum
-        state.temporal_link = (grid_subtract * state.temporal_link + torch.bmm(
+        temporal_link = (grid_subtract * state.temporal_link + torch.bmm(
             transpose_write_weight, state.precedence))
-        state.precedence = (
-            (1 - torch.sum(state.write_weight)) * state.precedence +
-            state.write_weight)
-        return state
+        mask = 1 - torch.eye(
+            num_cells, device=temporal_link.device, dtype=temporal_link.dtype)
+        temporal_link *= mask.expand_as(temporal_link)
+        precedence = ((1 - torch.sum(state.write_weight)) * state.precedence +
+                      state.write_weight)
+        return state._replace(
+            temporal_link=temporal_link, precedence=precedence)
 
     def _update_usage(self, interface, state):
         """Update the usage vector in state
@@ -179,9 +180,9 @@ class Memory(Module):
         prod = torch.prod(state.read_weights, dim=1)
         retention_vector = 1 - interface.free_gates * prod
         usage = state.usage
-        state.usage = ((usage + state.write_weight - usage * state.write_weight)
-                       * retention_vector)
-        return state
+        usage = ((usage + state.write_weight - usage * state.write_weight) *
+                 retention_vector)
+        return state._replace(usage=usage)
 
     def forward(self, interface, state):
         """Perform one read write on the memory

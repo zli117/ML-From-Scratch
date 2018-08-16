@@ -2,10 +2,11 @@
 """
 import unittest
 
+import numpy as np
 import torch
 
-from scratch.layers.dnc.memory import Memory, DNCState
 from scratch.layers.dnc.interface import Interface
+from scratch.layers.dnc.memory import DNCState, Memory
 
 
 class TestDNCMemory(unittest.TestCase):
@@ -91,7 +92,27 @@ class TestDNCMemory(unittest.TestCase):
             self.assertTrue(allocation[0, 0, i] < allocation[0, 0, i - 1])
 
     def test_update_temporal_link_and_precedence(self):
-        pass
+        link = torch.DoubleTensor([[0, 0, 0], [0, 0, 0], [1, 0, 0]]).view(
+            1, 3, 3)
+        write_weight = torch.DoubleTensor([0, 0.5, 0.3]).view(1, 1, 3)
+        precedence = torch.DoubleTensor([0.1, 0.3, 0.6]).view(1, 1, 3)
+        state = DNCState(
+            write_weight=write_weight,
+            temporal_link=link,
+            precedence=precedence,
+            memory=None,
+            usage=None,
+            read_weights=None)
+        new_state = self.memory._update_temporal_link_and_precedence(
+            state, torch.transpose(write_weight, 1, 2))
+        new_precedence = new_state.precedence.numpy()
+        new_link = new_state.temporal_link.numpy()
+        expected_precedence = (precedence * 0.2 + write_weight).numpy()
+        self.assertTrue(np.allclose(expected_precedence, new_precedence))
+        expected_link = np.array(
+            [[0, 0, 0], [0.05, 0, 0.3], [0.73, 0.09, 0]],
+            dtype=np.double).reshape(1, 3, 3)
+        self.assertTrue(np.allclose(expected_link, new_link))
 
     def test_update_usage(self):
         pass
