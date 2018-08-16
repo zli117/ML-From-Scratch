@@ -78,7 +78,41 @@ class TestDNCMemory(unittest.TestCase):
         self.assertTrue(addressing[1, 0, 0] > addressing[1, 1, 0])
 
     def test_update_read_weight(self):
-        pass
+        memory = torch.DoubleTensor([1, -1, -1, 1, 4, 5, 6, 7, -1, 1, 1,
+                                     -1]).view(1, 3, 4)
+        link = torch.DoubleTensor([[0, 0, 0], [0, 0, 0], [1, 0, 0]]).view(
+            1, 3, 3)
+        prev_read_weight = torch.DoubleTensor([[1, 0, 0], [0, 0, 1],
+                                               [0, 1, 0]]).view(1, 3, 3)
+        read_keys = torch.DoubleTensor([[1, -1, -1, 1], [1, -1, -1, 1],
+                                        [4, 5, 6, 7]]).view(1, 3, 4)
+        read_strength = torch.DoubleTensor([1, 1, 1]).view(1, 3, 1)
+        read_modes = torch.DoubleTensor([[1, 0, 0], [0, 1, 0], [0, 0, 1]]).view(
+            1, 3, 3)
+        interface = Interface(
+            read_keys=read_keys,
+            read_strength=read_strength,
+            read_modes=read_modes,
+            write_key=None,
+            write_strength=None,
+            erase_vector=None,
+            write_vector=None,
+            free_gates=None,
+            allocation_gate=None,
+            write_gate=None)
+        state = DNCState(
+            memory=memory,
+            temporal_link=link,
+            read_weights=prev_read_weight,
+            usage=None,
+            precedence=None,
+            write_weight=None)
+        new_state = self.memory._update_read_weight(interface, state)
+        new_read_weights = new_state.read_weights.numpy()
+        expected_read_weight = np.array([[0, 0, 1], [1, 0, 0],
+                                         [0.21194156, 0.57611688,
+                                          0.21194156]]).reshape(1, 3, 3)
+        self.assertTrue(np.allclose(new_read_weights, expected_read_weight))
 
     def test_get_allocation_weight(self):
         usage = torch.arange(1, 6, dtype=torch.double).view(1, 1, 5)
