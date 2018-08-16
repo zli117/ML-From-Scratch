@@ -177,8 +177,9 @@ class Memory(Module):
             DNCState: State with usage updated
         """
 
-        prod = torch.prod(state.read_weights, dim=1)
-        retention_vector = 1 - interface.free_gates * prod
+        prev_read_weights = state.read_weights
+        retention_vector = torch.prod(
+            1 - interface.free_gates * prev_read_weights, dim=1)
         usage = state.usage
         usage = ((usage + state.write_weight - usage * state.write_weight) *
                  retention_vector)

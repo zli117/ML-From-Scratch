@@ -115,7 +115,33 @@ class TestDNCMemory(unittest.TestCase):
         self.assertTrue(np.allclose(expected_link, new_link))
 
     def test_update_usage(self):
-        pass
+        read_weights = torch.DoubleTensor([0.1, 0.2, 0.3, 0.3, 0.4, 0.3]).view(
+            1, 2, 3)
+        usage = torch.DoubleTensor([0.1, 0.2, 0.3]).view(1, 1, 3)
+        write_weight = torch.DoubleTensor([0.3, 0.4, 0.1]).view(1, 1, 3)
+        free_gates = torch.DoubleTensor([0.5, 0.7]).view(1, 2, 1)
+        interface = Interface(
+            free_gates=free_gates,
+            read_keys=None,
+            read_strength=None,
+            read_modes=None,
+            write_key=None,
+            write_strength=None,
+            erase_vector=None,
+            write_vector=None,
+            allocation_gate=None,
+            write_gate=None)
+        state = DNCState(
+            usage=usage,
+            read_weights=read_weights,
+            write_weight=write_weight,
+            memory=None,
+            temporal_link=None,
+            precedence=None)
+        new_state = self.memory._update_usage(interface, state)
+        new_usage = new_state.usage.numpy()
+        self.assertTrue(
+            np.allclose(np.array([0.277685, 0.33696, 0.248455]), new_usage))
 
 
 if __name__ == '__main__':
