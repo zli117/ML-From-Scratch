@@ -6,7 +6,7 @@ import unittest
 import torch
 from torch.nn import functional
 
-from scratch.layers.dnc.interface import Interface
+from scratch.layers.dnc.interface import Interface, InterfaceBuilder
 
 
 class TestDNCInterface(unittest.TestCase):
@@ -24,8 +24,8 @@ class TestDNCInterface(unittest.TestCase):
         self.batch_size = batch_size
         self.num_read_heads = num_read_heads
         self.cell_width = cell_width
-        self.interface = Interface(self.num_read_heads, self.data,
-                                   self.cell_width)
+        interface = InterfaceBuilder(self.num_read_heads, self.cell_width)
+        self.interface = interface.get_interface(self.data)
 
     def helper(self,
                start,
