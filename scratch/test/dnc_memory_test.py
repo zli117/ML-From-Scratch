@@ -197,12 +197,13 @@ class TestDNCMemory(unittest.TestCase):
         interface = interface._replace(
             write_vector=interface.write_vector + 1,
             allocation_gate=interface.allocation_gate + 0.5)
-        read_val, new_state = self.memory(interface, state)
+        _, new_state = self.memory(interface, state)
+        _, new_state = self.memory(interface, new_state)
         read_val, new_state = self.memory(interface, new_state)
-        read_val, new_state = self.memory(interface, new_state)
+        memory = new_state.memory.numpy()
+        self.assertTrue(np.allclose(read_val.numpy(), 0.18634259))
         self.assertEqual(new_state.temporal_link[0, 1, 0], 0.25)
         self.assertEqual(new_state.temporal_link[1, 1, 0], 0.25)
-        memory = new_state.memory.numpy()
         self.assertTrue(np.allclose(memory, 0.5))
 
 if __name__ == '__main__':
