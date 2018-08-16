@@ -18,11 +18,10 @@ class TestDNCMemory(unittest.TestCase):
         self.memory = Memory()
 
     def test_update_write_weight(self):
-        memory = torch.DoubleTensor([
-            1, -1, -1, 1, 4, 5, 6, 7, -1, 1, 1, -1, 12, 16, 14, 10, 1, -1, 1,
-            -1, -1, 1, -1, 1
-        ]).view(2, 3, 4)
-        usage = torch.DoubleTensor([0, 0, 1, 1, 0, 0]).view(2, 1, 3)
+        memory = torch.DoubleTensor(
+            [[1, -1, -1, 1], [4, 5, 6, 7], [-1, 1, 1, -1], [12, 16, 14, 10],
+             [1, -1, 1, -1], [-1, 1, -1, 1]]).view(2, 3, 4)
+        usage = torch.DoubleTensor([[0, 0, 1], [1, 0, 0]]).view(2, 1, 3)
         state = DNCState(
             memory=memory,
             usage=usage,
@@ -30,7 +29,7 @@ class TestDNCMemory(unittest.TestCase):
             precedence=None,
             read_weights=None,
             write_weight=None)
-        write_keys = torch.DoubleTensor([4, 5, 6, 7, 12, 16, 14, 10]).view(
+        write_keys = torch.DoubleTensor([[4, 5, 6, 7], [12, 16, 14, 10]]).view(
             2, 1, 4)
         write_strength = torch.DoubleTensor([1, 0.5]).view(2, 1, 1)
         allocation_gate = torch.DoubleTensor([1, 0]).view(2, 1, 1)
@@ -58,13 +57,12 @@ class TestDNCMemory(unittest.TestCase):
         self.assertTrue(write_weight[1, 0, 1] == write_weight[1, 0, 2])
 
     def test_get_content_addressing(self):
-        memory = torch.DoubleTensor([
-            1, -1, -1, 1, 4, 5, 6, 7, -1, 1, 1, -1, 12, 16, 14, 10, 1, -1, 1,
-            -1, -1, 1, -1, 1
-        ]).view(2, 3, 4)
-        keys = torch.DoubleTensor(
-            [4, 5, 6, 7, 4, 5, 6, 7, 12, 16, 14, 10, 12, 16, 14, 12]).view(
-                2, self.read_heads, 4)
+        memory = torch.DoubleTensor(
+            [[1, -1, -1, 1], [4, 5, 6, 7], [-1, 1, 1, -1], [12, 16, 14, 10],
+             [1, -1, 1, -1], [-1, 1, -1, 1]]).view(2, 3, 4)
+        keys = torch.DoubleTensor([[4, 5, 6, 7], [4, 5, 6, 7], [12, 16, 14, 10],
+                                   [12, 16, 14, 12]]).view(
+                                       2, self.read_heads, 4)
         strength = torch.DoubleTensor([1, 2, 2, 1]).view(2, self.read_heads, 1)
         addressing = self.memory._get_content_addressing(keys, strength, memory)
         self.assertAlmostEqual(torch.sum(addressing[0, 0]), 1)
@@ -78,8 +76,8 @@ class TestDNCMemory(unittest.TestCase):
         self.assertTrue(addressing[1, 0, 0] > addressing[1, 1, 0])
 
     def test_update_read_weight(self):
-        memory = torch.DoubleTensor([1, -1, -1, 1, 4, 5, 6, 7, -1, 1, 1,
-                                     -1]).view(1, 3, 4)
+        memory = torch.DoubleTensor([[1, -1, -1, 1], [4, 5, 6, 7],
+                                     [-1, 1, 1, -1]]).view(1, 3, 4)
         link = torch.DoubleTensor([[0, 0, 0], [0, 0, 0], [1, 0, 0]]).view(
             1, 3, 3)
         prev_read_weight = torch.DoubleTensor([[1, 0, 0], [0, 0, 1],
@@ -149,8 +147,8 @@ class TestDNCMemory(unittest.TestCase):
         self.assertTrue(np.allclose(expected_link, new_link))
 
     def test_update_usage(self):
-        read_weights = torch.DoubleTensor([0.1, 0.2, 0.3, 0.3, 0.4, 0.3]).view(
-            1, 2, 3)
+        read_weights = torch.DoubleTensor([[0.1, 0.2, 0.3],
+                                           [0.3, 0.4, 0.3]]).view(1, 2, 3)
         usage = torch.DoubleTensor([0.1, 0.2, 0.3]).view(1, 1, 3)
         write_weight = torch.DoubleTensor([0.3, 0.4, 0.1]).view(1, 1, 3)
         free_gates = torch.DoubleTensor([0.5, 0.7]).view(1, 2, 1)
