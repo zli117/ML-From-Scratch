@@ -25,7 +25,7 @@ class TestDNCInterface(unittest.TestCase):
         self.num_read_heads = num_read_heads
         self.cell_width = cell_width
         interface = InterfaceBuilder(self.num_read_heads, self.cell_width)
-        self.interface = interface.get_interface(self.data)
+        self.interface = interface(self.data)
 
     def helper(self,
                start,

@@ -7,7 +7,7 @@ import torch
 from torch.autograd import Variable
 
 from scratch.layers.dnc.interface import Interface, InterfaceBuilder
-from scratch.layers.dnc.memory import DNCState, Memory
+from scratch.layers.dnc.memory import MemoryState, Memory
 
 
 class TestDNCMemory(unittest.TestCase):
@@ -23,7 +23,7 @@ class TestDNCMemory(unittest.TestCase):
             [[1, -1, -1, 1], [4, 5, 6, 7], [-1, 1, 1, -1], [12, 16, 14, 10],
              [1, -1, 1, -1], [-1, 1, -1, 1]]).view(2, 3, 4)
         usage = torch.DoubleTensor([[0, 0, 1], [1, 0, 0]]).view(2, 1, 3)
-        state = DNCState(
+        state = MemoryState(
             memory=memory,
             usage=usage,
             temporal_link=None,
@@ -99,7 +99,7 @@ class TestDNCMemory(unittest.TestCase):
             free_gates=None,
             allocation_gate=None,
             write_gate=None)
-        state = DNCState(
+        state = MemoryState(
             memory=memory,
             temporal_link=link,
             read_weights=prev_read_weight,
@@ -129,7 +129,7 @@ class TestDNCMemory(unittest.TestCase):
             1, 3, 3)
         write_weight = torch.DoubleTensor([0, 0.5, 0.3]).view(1, 1, 3)
         precedence = torch.DoubleTensor([0.1, 0.3, 0.6]).view(1, 1, 3)
-        state = DNCState(
+        state = MemoryState(
             write_weight=write_weight,
             temporal_link=link,
             precedence=precedence,
@@ -164,7 +164,7 @@ class TestDNCMemory(unittest.TestCase):
             write_vector=None,
             allocation_gate=None,
             write_gate=None)
-        state = DNCState(
+        state = MemoryState(
             usage=usage,
             read_weights=read_weights,
             write_weight=write_weight,
@@ -183,7 +183,7 @@ class TestDNCMemory(unittest.TestCase):
         write_weight = Variable(torch.DoubleTensor(2, 1, 3).fill_(0))
         temporal_link = Variable(torch.DoubleTensor(2, 3, 3).fill_(0))
         precedence = Variable(torch.DoubleTensor(2, 1, 3).fill_(0))
-        state = DNCState(
+        state = MemoryState(
             usage=usage,
             read_weights=read_weights,
             write_weight=write_weight,
@@ -193,7 +193,7 @@ class TestDNCMemory(unittest.TestCase):
         data_len = 2 * ((4 * 2) + 3 * 4 + 5 * 2 + 3)
         interface_vector = Variable(torch.DoubleTensor(data_len).fill_(0)).view(
             2, -1)
-        interface = InterfaceBuilder(2, 4).get_interface(interface_vector)
+        interface = InterfaceBuilder(2, 4)(interface_vector)
         interface = interface._replace(
             write_vector=interface.write_vector + 1,
             allocation_gate=interface.allocation_gate + 0.5)

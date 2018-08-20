@@ -15,9 +15,9 @@ from torch.autograd import Variable
 # precedence: (B, 1, N)
 # read_weights: (B, R, N)
 # write_weight: (B, 1, N)
-DNCState = collections.namedtuple(
-    "DNCState", ("memory", "temporal_link", "usage", "precedence",
-                 "read_weights", "write_weight"))
+MemoryState = collections.namedtuple(
+    "MemoryState", ("memory", "temporal_link", "usage", "precedence",
+                    "read_weights", "write_weight"))
 
 
 class Memory(Module):
@@ -47,10 +47,10 @@ class Memory(Module):
 
         Args:
             interface (Interface): The controller interface
-            state (DNCState): Current state
+            state (MemoryState): Current state
 
         Returns:
-            DNCState: With write weight updated
+            MemoryState: With write weight updated
         """
 
         allocation_weight = self._get_allocation_weight(state.usage)
@@ -100,10 +100,10 @@ class Memory(Module):
 
         Args:
             interface (Interface): The interface emitted from the controller
-            state (DNCState): The state
+            state (MemoryState): The state
 
         Returns:
-            DNCState: State with read weights updated
+            MemoryState: State with read weights updated
         """
 
         transpose_temporal_link = torch.transpose(state.temporal_link, 1, 2)
@@ -144,12 +144,12 @@ class Memory(Module):
         """Compute the new temporal link and precedence
 
         Args:
-            state (DNCState): The current state
+            state (MemoryState): The current state
             transpose_write_weight ([type]): transposed write weight. Shape:
                                              (B, N, 1)
 
         Returns:
-            DNCState: State with temporal link and precedence updated
+            MemoryState: State with temporal link and precedence updated
         """
 
         num_cells = state.write_weight.shape[2]
@@ -171,10 +171,10 @@ class Memory(Module):
 
         Args:
             interface (Interface): The interface of from controller
-            state (DNCState): The state
+            state (MemoryState): The state
 
         Returns:
-            DNCState: State with usage updated
+            MemoryState: State with usage updated
         """
 
         prev_read_weights = state.read_weights
@@ -193,12 +193,13 @@ class Memory(Module):
 
         Args:
             interface (Interface): The interface from controller
-            state (DNCState): The current state
+            state (MemoryState): The current state
 
         Returns:
-            Tuple(torch.Tensor, torch.Tensor): The read result. Shape:
-                                               (Batch, #RH, W), and the state
+            Tuple(torch.Tensor, MemoryState): The read result. Shape:
+                                              (Batch, #RH, W), and the state
         """
+
         state = self._update_write_weight(interface, state)
         write_vector = interface.write_vector
         erase_vector = interface.erase_vector

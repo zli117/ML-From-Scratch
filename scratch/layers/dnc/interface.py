@@ -33,7 +33,7 @@ class InterfaceBuilder:
         self.num_read_heads = num_read_heads
         self.cell_width = cell_width
 
-    def get_interface(self, vector):
+    def __call__(self, vector):
         """Parse the vector to interface
 
         Args:
