@@ -51,8 +51,6 @@ class Controller(Module):
         self.num_cells = num_cells
         self.cell_width = cell_width
         self.num_read_heads = num_read_heads
-        self.input_dim = input_dim
-        self.output_dim = output_dim
 
     def _split_controller_output(self, controller_out):
         interface = controller_out[:, :self.interface_size]
