@@ -5,8 +5,8 @@ import collections
 
 import torch
 from torch import nn
-from torch.nn import Module, functional
 from torch.autograd import Variable
+from torch.nn import Module, functional
 
 # Size of each field:
 # memory: (B, N, W)

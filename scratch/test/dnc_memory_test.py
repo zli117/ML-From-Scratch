@@ -7,7 +7,7 @@ import torch
 from torch.autograd import Variable
 
 from scratch.layers.dnc.interface import Interface, InterfaceBuilder
-from scratch.layers.dnc.memory import MemoryState, Memory
+from scratch.layers.dnc.memory import Memory, MemoryState
 
 
 class TestDNCMemory(unittest.TestCase):
@@ -205,6 +205,7 @@ class TestDNCMemory(unittest.TestCase):
         self.assertEqual(new_state.temporal_link[0, 1, 0], 0.25)
         self.assertEqual(new_state.temporal_link[1, 1, 0], 0.25)
         self.assertTrue(np.allclose(memory, 0.5))
+
 
 if __name__ == '__main__':
     unittest.main()
